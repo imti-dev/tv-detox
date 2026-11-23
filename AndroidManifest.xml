@@ -35,6 +35,20 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <application android:label="Home" android:allowBackup="false" android:banner="@drawable/banner" android:icon="@drawable/icon"
         android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen">
+        <!-- tvdetox://open/<package>: opens that app. The phone remote uses it over Google's TV remote
+             protocol (its app links), for apps that have no link of their own, like Jellyfin. -->
+        <activity android:name=".OpenApp"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="tvdetox" android:host="open" />
+            </intent-filter>
+        </activity>
         <activity android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask" android:stateNotNeeded="true"
