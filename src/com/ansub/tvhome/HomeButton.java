@@ -8,6 +8,8 @@ import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
 
 // Opt-in (Settings > Accessibility > Home button): makes Home open this home screen on TVs where the
@@ -52,6 +54,64 @@ public class HomeButton extends AccessibilityService {
 
     @Override
     public void onInterrupt() {}
+
+    // The remote's Settings key normally opens Google TV's quick-settings panel, which is part of
+    // Google TV's home screen. With that turned off the key does nothing, so open TV settings instead.
+    // Only when that panel can't handle it: with Google TV's home screen on, the key is left alone.
+    // Remotes differ in what that key sends: KEYCODE_SETTINGS, or KEYCODE_NOTIFICATION (TCL's
+    // RC833 Google TV remote sends the notification key for its gear button).
+    @Override
+    protected boolean onKeyEvent(KeyEvent event) {
+        int key = event.getKeyCode();
+        if (key == KeyEvent.KEYCODE_SETTINGS || key == KeyEvent.KEYCODE_NOTIFICATION) {
+            if (enabled(GOOGLE_TV_HOME.getPackageName())) return false;
+            if (released(event)) {
+                try {
+                    startActivity(new Intent(Settings.ACTION_SETTINGS)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
+                } catch (Exception ignored) {}
+            }
+            return true;
+        }
+        // TCL remotes send their own codes for the app buttons, and TCL's partner app turns them into
+        // app launches. With that app turned off the buttons do nothing, so open the app here.
+        // KEYCODE_BUTTON_3 is also a gamepad button: only take it from the remote, never a controller.
+        String app = null;
+        if (key == TCL_NETFLIX_KEY) app = "com.netflix.ninja";
+        else if (key == TCL_VIDEO_KEY) app = "org.jellyfin.androidtv";
+        else if (key == TCL_CHANNEL_KEY) app = "com.crunchyroll.crunchyroid";
+        else if (key == KeyEvent.KEYCODE_BUTTON_3 && !event.isFromSource(InputDevice.SOURCE_GAMEPAD)
+                && !event.isFromSource(InputDevice.SOURCE_JOYSTICK)) app = "com.google.android.youtube.tv";
+        if (app == null || enabled(TCL_APP_KEYS)) return false;
+        Intent launch = getPackageManager().getLeanbackLaunchIntentForPackage(app);
+        if (launch == null) launch = getPackageManager().getLaunchIntentForPackage(app);
+        if (launch == null) return false;
+        if (released(event)) {
+            try {
+                startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
+            } catch (Exception ignored) {}
+        }
+        return true;
+    }
+
+    // TCL's app-button keys (RC833 remote), and the TCL app that normally handles these keys.
+    // The video-icon button and TCL Channel button are remapped here to Jellyfin and Crunchyroll.
+    private static final int TCL_NETFLIX_KEY = 4062;
+    private static final int TCL_VIDEO_KEY = 4057;
+    private static final int TCL_CHANNEL_KEY = 4020;
+    private static final String TCL_APP_KEYS = "com.tcl.partnercustomizer";
+
+    private static boolean released(KeyEvent event) {
+        return event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled();
+    }
+
+    private boolean enabled(String pkg) {
+        try {
+            return getPackageManager().getApplicationInfo(pkg, 0).enabled;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     // During the TV's first setup, Home is left alone.
     private boolean setupDone() {
